@@ -1,68 +1,68 @@
 #include "Body.h"
 #include <glad/glad.h>
-#include <cmath>
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <utility>
 
-Body::Body(std::vector<float> position, std::vector<float> velocity, float radius, std::vector<float> color) 
+Body::Body(glm::vec2 position, glm::vec2 velocity, float radius, glm::vec3 color) 
     : pos(position), vel(velocity), r(radius), color(color) {
     res = 50;
 }
 
 void Body::accelerate(float x, float y, float dt) {
-    vel[0] += x * dt;
-    vel[1] += y * dt;
+    vel.x += x * dt;
+    vel.y += y * dt;
 }
 
 void Body::updatePos(float dt) {
-    pos[0] += vel[0] * dt;
-    pos[1] += vel[1] * dt;
+    pos += vel * dt;
 }
 
 void Body::drawCircle(int offsetLoc, int radiusLoc, int colorLoc, VAO& vao) {
-    glUniform2f(offsetLoc, pos[0], pos[1]);
+    glUniform2f(offsetLoc, pos.x, pos.y);
     glUniform1f(radiusLoc, r);
-    glUniform4f(colorLoc, color[0], color[1], color[2], 1.0f);
+    glUniform4f(colorLoc, color.r, color.g, color.b, 1.0f);
     
     vao.Bind();
     glDrawArrays(GL_TRIANGLE_FAN, 0, res + 2); 
 }
 
 void Body::boundaryCheck(float SIM_WIDTH, float SIM_HEIGHT) {
-    if (pos[1] - r < 0 || pos[1] + r > SIM_HEIGHT) {
-        if (pos[1] - r < 0) {
-            pos[1] = r;
+    if (pos.y - r < 0 || pos.y + r > SIM_HEIGHT) {
+        if (pos.y - r < 0) {
+            pos.y = r;
         } else {
-            pos[1] = SIM_HEIGHT - r;
+            pos.y = SIM_HEIGHT - r;
         }
-        vel[1] *= -0.7f;
+        vel.y *= -0.7f;
     }
 
-    if (pos[0] - r < 0 || pos[0] + r > SIM_WIDTH) {
-        if (pos[0] - r < 0) {
-            pos[0] = r;
+    if (pos.x - r < 0 || pos.x + r > SIM_WIDTH) {
+        if (pos.x - r < 0) {
+            pos.x = r;
         } else {
-            pos[0] = SIM_WIDTH - r;
+            pos.x = SIM_WIDTH - r;
         }
-        vel[0] *= -0.5f;
+        vel.x *= -0.5f;
     }
 }
 
 void Body::collisionCheck(Body& other) {
-
-    float dx = this->pos[0] - other.pos[0];
-    float dy = this->pos[1] - other.pos[1];
-
-    float distance = std::sqrt(std::pow(dx, 2) - std::pow(dy, 2));
+    float distance = glm::distance(this->pos, other.pos);
     float minimumDistance = this->r + other.r;
+    
     if (distance < minimumDistance) {
+        // Swap velocities (elastic collision placeholder for equal mass)
         std::swap(this->vel, other.vel);
     
+        // Positional resolution to prevent sticking
         float overlap = minimumDistance - distance;
-        float nx = dx / distance;
-        float ny = dy / distance;
-
-        other.pos[0] += nx * (overlap / 2.0f);
-        other.pos[1] += nx * (overlap / 2.0f);
+        glm::vec2 normal = glm::normalize(other.pos - this->pos);
+        
+        // Push both bodies apart equally
+        float percent = 0.51f;
+        this->pos -= normal * (overlap * percent);
+        other.pos += normal * (overlap * percent);
     }
 }
-
 

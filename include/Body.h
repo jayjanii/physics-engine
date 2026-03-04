@@ -1,18 +1,18 @@
 #ifndef BODY_CLASS_H
 #define BODY_CLASS_H
 
-#include <vector>
+#include <glm/glm.hpp>
 #include "VAO.h"
 
 class Body {
 public:
-    std::vector<float> pos;
-    std::vector<float> vel;
-    std::vector<float> color;
+    glm::vec2 pos;
+    glm::vec2 vel;
+    glm::vec3 color;
     float r;
     int res;
 
-    Body(std::vector<float> position, std::vector<float> velocity, float radius, std::vector<float> color);
+    Body(glm::vec2 position, glm::vec2 velocity, float radius, glm::vec3 color);
 
     void accelerate(float x, float y, float dt);
     void updatePos(float dt);

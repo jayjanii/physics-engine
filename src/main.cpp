@@ -26,7 +26,7 @@ const float PI = static_cast<float>(M_PI);
 
 GLFWwindow* startGLFW();
 bool initGLAD();
-void ortho(float left, float right, float bottom, float top, float zNear, float zFar, float* mat);
+
 
 int main()
 {
@@ -63,17 +63,18 @@ int main()
     float worldWidth = SCREEN_WIDTH / meterScale;
     float worldHeight = SCREEN_HEIGHT / meterScale;
 
-    float proj[16];
-    ortho(0.0f, worldWidth, 0.0f, worldHeight, -1.0f, 1.0f, proj);
+    glm::mat4 proj = glm::ortho(0.0f, worldWidth, 0.0f, worldHeight, -1.0f, 1.0f);
 
     shaderProgram.Activate();
-    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, proj);
+    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(proj));
 
     double lastTime = glfwGetTime();
 
     std::vector<Body> bodies = {
-        Body({2.0f, 5.0f}, {0.0f, 0.0f}, 0.5f, {0.0f, 0.0f, 1.0f}), // Blue
-        Body({6.0f, 5.0f}, {0.0f, 0.0f}, 1.0f, {1.0f, 1.0f, 1.0f})  // White
+        Body({4.0f, 2.0f}, {0.0f, 0.0f}, 0.3f, {0.0f, 0.0f, 1.0f}), // Blue
+        Body({4.1f, 3.5f}, {0.0f, 0.0f}, 0.3f, {1.0f, 1.0f, 1.0f}),  // White
+        Body({4.0f, 4.7f}, {0.0f, 0.0f}, 0.3f, {1.0f, 0.0f, 0.0f}), // Red
+        Body({4.3f, 6.0f}, {0.0f, 0.0f}, 0.3f, {0.0f, 1.0f, 0.0f})  // Green
     };
     
     while(!glfwWindowShouldClose(window))
@@ -89,12 +90,16 @@ int main()
             shaderProgram.Activate();
             
             for (Body& body : bodies) {
-                body.accelerate(2.0f, -9.81f, dt);
+                body.accelerate(0.0f, -9.81f, dt);
                 body.updatePos(dt);
                 body.boundaryCheck(SIM_WIDTH, SIM_HEIGHT);
             }
 
-            bodies[0].collisionCheck(bodies[1]);
+            for (size_t i = 0; i < bodies.size(); i++) {
+                for (size_t j = i + 1; j < bodies.size(); j++) {
+                    bodies[i].collisionCheck(bodies[j]);
+                }
+            }
 
             for (Body& body : bodies) {
                 body.drawCircle(offsetLoc, radiusLoc, colorLoc, vao);
@@ -144,24 +149,4 @@ bool initGLAD() {
     return true;
 }
 
-void ortho(float left, float right, float bottom, float top, float zNear, float zFar, float* mat) {
-    mat[0] = 2.0f / (right - left);
-    mat[1] = 0.0f;
-    mat[2] = 0.0f;
-    mat[3] = 0.0f;
 
-    mat[4] = 0.0f;
-    mat[5] = 2.0f / (top - bottom);
-    mat[6] = 0.0f;
-    mat[7] = 0.0f;
-
-    mat[8] = 0.0f;
-    mat[9] = 0.0f;
-    mat[10] = -2.0f / (zFar - zNear);
-    mat[11] = 0.0f;
-
-    mat[12] = -(right + left) / (right - left);
-    mat[13] = -(top + bottom) / (top - bottom);
-    mat[14] = -(zFar + zNear) / (zFar - zNear);
-    mat[15] = 1.0f;
-}
