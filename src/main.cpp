@@ -2,11 +2,18 @@
 #include <iostream>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <vector>
 #include <cmath>
 
-const double TARGET_FPS = 60.0f;
+#include "Shader.h"
+#include "VAO.h"
+#include "VBO.h"
+#include "Body.h"
 
+const double TARGET_FPS = 60.0f;
 const float PIXELS_PER_METER = 100.0f;
 
 const float SCREEN_WIDTH = 800.0f;
@@ -17,66 +24,9 @@ const float SIM_HEIGHT = SCREEN_HEIGHT / PIXELS_PER_METER;
 
 const float PI = static_cast<float>(M_PI);
 
-class Body {
-    public:
-        std::vector<float> pos;
-        std::vector<float> vel;
-        float r;
-        int res;
-        Body(std::vector<float> position, std::vector<float> velocity, float radius) : pos(position), vel(velocity), r(radius) {
-            res = 50;
-        }
-
-        void accelerate(float x, float y, float dt) {
-            vel[0] += x * dt;
-            vel[1] += y * dt;
-        }
-
-        void updatePos(float dt) {
-            pos[0] += vel[0] * dt;
-            pos[1] += vel[1] * dt;
-        }
-
-        void drawCircle() {
-            
-
-            glBegin(GL_TRIANGLE_FAN);
-            glVertex2d(pos[0], pos[1]);
-
-            for (int i = 0; i <= res; i++) {
-                float angle = 2.0f * PI * i / res;
-                float x = pos[0] + cos(angle) * r;
-                float y = pos[1] + sin(angle) * r;
-                glVertex2d(x, y);
-            }
-
-            glEnd();
-        }
-
-        void boundaryCheck(float SIM_WIDTH, float SIM_HEIGHT) {
-            if (pos[1] - r < 0 || pos[1] + r > SIM_HEIGHT) {
-                if (pos[1] - r < 0) {
-                    pos[1] = r;
-                } else {
-                    pos[1] = SIM_HEIGHT - r;
-                }
-                vel[1] *= -0.7f;
-            }
-
-            if (pos[0] - r < 0 || pos[0] + r > SIM_WIDTH) {
-                if (pos[0] - r < 0) {
-                    pos[0] = r;
-                } else {
-                    pos[0] = SIM_WIDTH - r;
-                }
-                vel[0] *= -0.5f;
-            }
-        }
-};
-
 GLFWwindow* startGLFW();
 bool initGLAD();
-void setupProjection(float width, float height);
+void ortho(float left, float right, float bottom, float top, float zNear, float zFar, float* mat);
 
 int main()
 {
@@ -84,19 +34,48 @@ int main()
     
     if (!window || !initGLAD()) return -1;
 
+    Shader shaderProgram("shaders/default.vert", "shaders/default.frag");
+
+    int res = 50; 
+    std::vector<float> vertices;
+    vertices.push_back(0.0f);
+    vertices.push_back(0.0f);
+
+    for (int i = 0; i <= res; i++) {
+        float angle = 2.0f * PI * i / res;
+        vertices.push_back(cos(angle));
+        vertices.push_back(sin(angle));
+    }
+
+    VAO vao;
+    vao.Bind();
+    VBO vbo(vertices);
+    vao.LinkAttrib(vbo, 0, 2, GL_FLOAT, 2 * sizeof(float), (void*)0);
+    vao.Unbind();
+    vbo.Unbind();
+
+    int projectionLoc = glGetUniformLocation(shaderProgram.ID, "projection");
+    int offsetLoc = glGetUniformLocation(shaderProgram.ID, "offset");
+    int radiusLoc = glGetUniformLocation(shaderProgram.ID, "radius");
+    int colorLoc = glGetUniformLocation(shaderProgram.ID, "objectColor");
+
+    float meterScale = PIXELS_PER_METER; 
+    float worldWidth = SCREEN_WIDTH / meterScale;
+    float worldHeight = SCREEN_HEIGHT / meterScale;
+
+    float proj[16];
+    ortho(0.0f, worldWidth, 0.0f, worldHeight, -1.0f, 1.0f, proj);
+
+    shaderProgram.Activate();
+    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, proj);
+
     double lastTime = glfwGetTime();
 
-    float radius = 0.5f;
-    int res = 50;
-
     std::vector<Body> bodies = {
-        Body(std::vector<float>{2.0f, 5.0f}, std::vector<float>{0.0f, 0.0f}, 0.5f),
-        Body(std::vector<float>{6.0f, 5.0f}, std::vector<float>{0.0f, 0.0f}, 1.0f)
+        Body({2.0f, 5.0f}, {0.0f, 0.0f}, 0.5f, {0.0f, 0.0f, 1.0f}), // Blue
+        Body({6.0f, 5.0f}, {0.0f, 0.0f}, 1.0f, {1.0f, 1.0f, 1.0f})  // White
     };
     
-
-    setupProjection(SCREEN_WIDTH, SCREEN_HEIGHT);
-
     while(!glfwWindowShouldClose(window))
     {
         double currentTime = glfwGetTime();
@@ -107,20 +86,29 @@ int main()
             lastTime = currentTime;
 
             glClear(GL_COLOR_BUFFER_BIT);
+            shaderProgram.Activate();
             
             for (Body& body : bodies) {
                 body.accelerate(2.0f, -9.81f, dt);
                 body.updatePos(dt);
                 body.boundaryCheck(SIM_WIDTH, SIM_HEIGHT);
-                body.drawCircle();
             }
+
+            bodies[0].collisionCheck(bodies[1]);
+
+            for (Body& body : bodies) {
+                body.drawCircle(offsetLoc, radiusLoc, colorLoc, vao);
+            }
+
             glfwSwapBuffers(window);
         }
         
         glfwPollEvents();    
     }
 
-
+    vao.Delete();
+    vbo.Delete();
+    shaderProgram.Delete();
     glfwTerminate();
     return 0;
 }
@@ -133,7 +121,7 @@ GLFWwindow* startGLFW() {
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     GLFWwindow* window = glfwCreateWindow((int)SCREEN_WIDTH, (int)SCREEN_HEIGHT, "simulation", nullptr, nullptr);
     if (window == nullptr) {
@@ -156,14 +144,24 @@ bool initGLAD() {
     return true;
 }
 
-void setupProjection(float width, float height) {
-    float meterScale = 100.0f; 
-    float worldWidth = width / meterScale;
-    float worldHeight = height / meterScale;
+void ortho(float left, float right, float bottom, float top, float zNear, float zFar, float* mat) {
+    mat[0] = 2.0f / (right - left);
+    mat[1] = 0.0f;
+    mat[2] = 0.0f;
+    mat[3] = 0.0f;
 
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(0, worldWidth, 0, worldHeight, -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    mat[4] = 0.0f;
+    mat[5] = 2.0f / (top - bottom);
+    mat[6] = 0.0f;
+    mat[7] = 0.0f;
+
+    mat[8] = 0.0f;
+    mat[9] = 0.0f;
+    mat[10] = -2.0f / (zFar - zNear);
+    mat[11] = 0.0f;
+
+    mat[12] = -(right + left) / (right - left);
+    mat[13] = -(top + bottom) / (top - bottom);
+    mat[14] = -(zFar + zNear) / (zFar - zNear);
+    mat[15] = 1.0f;
 }
